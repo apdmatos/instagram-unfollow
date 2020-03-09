@@ -11,6 +11,8 @@ DAY_MILLIS = 24 * 60 * 60
 logger = logging.getLogger(__name__)
 
 
+###########################################
+# hack to fir an issue in the web api
 class MyClient(Client):
     @staticmethod
     def _extract_rhx_gis(html):
