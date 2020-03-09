@@ -1,10 +1,22 @@
-from instagram_private_api import Client
+from instagram_web_api import Client
 from instagram_private_api_extensions import pagination
 import time
 from persistance import Persistence, Follower, Following
+import hashlib
+import string
+import random
+import logging
 
 DAY_MILLIS = 24 * 60 * 60
+logger = logging.getLogger(__name__)
 
+
+class MyClient(Client):
+    @staticmethod
+    def _extract_rhx_gis(html):
+        options = string.ascii_lowercase + string.digits
+        text = ''.join([random.choice(options) for _ in range(8)])
+        return hashlib.md5(text.encode()).hexdigest()
 
 class UnfollowBot:
     def __init__(self, username, password, unfollow_per_day=199, stop_on_failures=10):
@@ -15,19 +27,19 @@ class UnfollowBot:
         self.stop_on_failures = stop_on_failures
 
     def _login(self, username, password):
-        print('authenticating {}... it may take a while'.format(username))
-        self.api = Client(
+        logger.info('authenticating {}... it may take a while'.format(username))
+        self.api = MyClient(
             auto_patch=True, authenticate=True,
             username=username, password=password)
 
-        print('successfully authenticated {}'.format(username))
+        logger.info('successfully authenticated {}'.format(username))
 
     def _download_all_followers(self):
         if self.persistence.get_all_followers_downloaded():
-            print('all followers have been downloaded... Skipping followers download')
+            logger.info('all followers have been downloaded... Skipping followers download')
             return
 
-        print('downloading followers')
+        logger.info('downloading followers')
 
         count = 0
         rank_token = self.api.generate_uuid()
@@ -43,7 +55,7 @@ class UnfollowBot:
                 count += len(results['users'])
             except:
                 self.failures += 1
-                print('error getting followeres from instagram')
+                logger.error('error getting followeres from instagram')
                 continue
 
             if results is None:
@@ -53,15 +65,15 @@ class UnfollowBot:
                 entity = Follower(id=follower['id'], username=follower['username'])
                 self.persistence.save_follower(entity)
 
-        print('all followers have been downloaded. downloaded {} profiles'.format(count))
+        logger.info('all followers have been downloaded. downloaded {} profiles'.format(count))
         self.persistence.all_followeres_downloaded()
 
     def _download_all_following(self):
         if self.persistence.get_all_following_downloaded():
-            print('all following have been downloaded... Skipping following download')
+            logger.info('all following have been downloaded... Skipping following download')
             return
 
-        print('downloading users I am following')
+        logger.info('downloading users I am following')
 
         rank_token = self.api.generate_uuid()
         following = pagination.page(self.api.user_following,
@@ -77,7 +89,7 @@ class UnfollowBot:
                 count += len(results['users'])
             except:
                 self.failures += 1
-                print('error getting people I follow from instagram')
+                logger.error('error getting people I follow from instagram')
                 continue
 
             if results is None:
@@ -87,26 +99,27 @@ class UnfollowBot:
                 entity = Following(id=user['id'], username=user['username'])
                 self.persistence.save_follower(entity)
 
-        print('all following have been downloaded. downloaded {} profiles'.format(count))
+        logger.info('all following have been downloaded. downloaded {} profiles'.format(count))
         self.persistence.all_following_downloaded()
 
     def _unfollow_batch(self, profiles_not_follow_back):
         for user in profiles_not_follow_back:
-            print('trying to un follow user {}'.format(user.username))
+            logger.info('trying to un follow user {}'.format(user.username))
             try:
                 self.api.friendships_destroy(user.id)
 
                 user.unfollowed = True
                 self.persistence.save_following(user)
 
-                print('successfuly un followed user {}'.format(user.username))
-                print('sleeping for {} s'.format(self.sleep_time))
+                logger.info('successfuly un followed user {}'.format(user.username))
+                logger.info('sleeping for {} s'.format(self.sleep_time))
             except:
                 self.failures += 1
-                print('error trying to un follow user {}'.format(user.id))
+                logger.error('error trying to un follow user {}'.format(user.id))
                 if self.failures > self.stop_on_failures:
                     return
 
+            logger.info('sleeping for {}s'.format(self.sleep_time))
             time.sleep(self.sleep_time)
 
     def start(self):
@@ -117,14 +130,14 @@ class UnfollowBot:
         while True:
 
             if self.failures > self.stop_on_failures:
-                print('stopping as we reached the max amount of failures...')
+                logger.info('stopping as we reached the max amount of failures...')
                 break
 
             profiles_not_follow_back = self.persistence.get_not_following(100)
             if profiles_not_follow_back is None or len(profiles_not_follow_back) == 0:
-                print('all profiles have been unfollowed!')
+                logger.info('all profiles have been unfollowed!')
                 break
 
             self._unfollow_batch(profiles_not_follow_back)
 
-        print('Bye!')
+        logger.info('Bye!')
