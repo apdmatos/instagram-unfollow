@@ -1,7 +1,8 @@
 from unfollowBot import UnfollowBot
 import logging
 
-if __name__ == "__main__":
+
+def main():
     import argparse
     parser = argparse.ArgumentParser(description='unfollow instagram users which do not follow me back.')
     parser.add_argument('username', metavar='username', nargs=1,
@@ -26,3 +27,7 @@ if __name__ == "__main__":
 
     bot = UnfollowBot(username, password, args.unfollow_per_day, args.stop_on_failures)
     bot.start()
+
+
+if __name__ == "__main__":
+    main()

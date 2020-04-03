@@ -1,4 +1,4 @@
-from instagram_web_api import Client
+from instagram_web_api import Client, ClientThrottledError, ClientBadRequestError, ClientForbiddenError
 from instagram_private_api_extensions import pagination
 import time
 from persistance import Persistence, Follower, Following
@@ -20,21 +20,24 @@ class MyClient(Client):
         text = ''.join([random.choice(options) for _ in range(8)])
         return hashlib.md5(text.encode()).hexdigest()
 
+
 class UnfollowBot:
     def __init__(self, username, password, unfollow_per_day=199, stop_on_failures=10):
-        self._login(username, password)
+        self._username = username
+        self._password = password
+        self._login()
         self.persistence = Persistence(username)
         self.sleep_time = DAY_MILLIS / unfollow_per_day
         self.failures = 0
         self.stop_on_failures = stop_on_failures
 
-    def _login(self, username, password):
-        logger.info('authenticating {}... it may take a while'.format(username))
+    def _login(self):
+        logger.info('authenticating {}... it may take a while'.format(self._username))
         self.api = MyClient(
             auto_patch=True, authenticate=True,
-            username=username, password=password)
+            username=self._username, password=self._password)
 
-        logger.info('successfully authenticated {}'.format(username))
+        logger.info('successfully authenticated {}'.format(self._username))
 
     def _download_all_followers(self):
         if self.persistence.get_all_followers_downloaded():
@@ -114,12 +117,24 @@ class UnfollowBot:
                 self.persistence.save_following(user)
 
                 logger.info('successfuly un followed user {}'.format(user.username))
-                logger.info('sleeping for {} s'.format(self.sleep_time))
-            except:
+
+            except ClientBadRequestError:
+                logger.info("user {} does not exist anymore".format(user.username))
+                user.unfollowed = True
+                self.persistence.save_following(user)
+
+            except ClientThrottledError:
                 self.failures += 1
-                logger.error('error trying to un follow user {}'.format(user.id))
+                logger.error('throttle error trying to un follow user {}'.format(user.id))
                 if self.failures > self.stop_on_failures:
                     return
+
+            except ClientForbiddenError:
+                logger.error("session has expired... We need to authenticate again")
+                self._login()
+
+            except Exception as e:
+                logger.error("error happened while trying to unfollow user {}".format(user.username), e)
 
             logger.info('sleeping for {}s'.format(self.sleep_time))
             time.sleep(self.sleep_time)
