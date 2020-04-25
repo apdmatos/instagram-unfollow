@@ -1,4 +1,5 @@
-from instagram_web_api import Client, ClientThrottledError, ClientBadRequestError, ClientForbiddenError
+from instagram_web_api import Client as WebClient, ClientThrottledError, ClientBadRequestError, ClientForbiddenError
+from instagram_private_api import Client as MobileClient
 from instagram_private_api_extensions import pagination
 import time
 from persistance import Persistence, Follower, Following
@@ -13,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 ###########################################
 # hack to fir an issue in the web api
-class MyClient(Client):
+class MyClient(WebClient):
     @staticmethod
     def _extract_rhx_gis(html):
         options = string.ascii_lowercase + string.digits
@@ -37,6 +38,10 @@ class UnfollowBot:
             auto_patch=True, authenticate=True,
             username=self._username, password=self._password)
 
+        self.mobileApi = MobileClient(
+            auto_patch=True, authenticate=True,
+            username=self._username, password=self._password)
+
         logger.info('successfully authenticated {}'.format(self._username))
 
     def _download_all_followers(self):
@@ -47,9 +52,9 @@ class UnfollowBot:
         logger.info('downloading followers')
 
         count = 0
-        rank_token = self.api.generate_uuid()
-        followers = pagination.page(self.api.user_followers,
-                                    args={'user_id': self.api.authenticated_user_id, 'rank_token': rank_token}, wait=10)
+        rank_token = self.mobileApi.generate_uuid()
+        followers = pagination.page(self.mobileApi.user_followers,
+                                    args={'user_id': self.mobileApi.authenticated_user_id, 'rank_token': rank_token}, wait=10)
         it = iter(followers)
 
         while True:
@@ -57,15 +62,14 @@ class UnfollowBot:
                 return
             try:
                 results = next(it, None)
-                count += len(results['users'])
+                if results is None:
+                    break
             except:
                 self.failures += 1
                 logger.error('error getting followeres from instagram')
                 continue
 
-            if results is None:
-                break
-
+            count += len(results['users'])
             for follower in results['users']:
                 entity = Follower(id=follower['id'], username=follower['username'])
                 self.persistence.save_follower(entity)
@@ -80,9 +84,9 @@ class UnfollowBot:
 
         logger.info('downloading users I am following')
 
-        rank_token = self.api.generate_uuid()
-        following = pagination.page(self.api.user_following,
-                                    args={'user_id': self.api.authenticated_user_id, 'rank_token': rank_token}, wait=10)
+        rank_token = self.mobileApi.generate_uuid()
+        following = pagination.page(self.mobileApi.user_following,
+                                    args={'user_id': self.mobileApi.authenticated_user_id, 'rank_token': rank_token}, wait=10)
 
         count = 0
         it = iter(following)
@@ -91,15 +95,15 @@ class UnfollowBot:
                 return
             try:
                 results = next(it, None)
-                count += len(results['users'])
-            except:
+
+                if results is None:
+                    break
+            except Exception as e:
                 self.failures += 1
-                logger.error('error getting people I follow from instagram')
+                logger.error('error getting people I follow from instagram', e)
                 continue
 
-            if results is None:
-                break
-
+            count += len(results['users'])
             for user in results['users']:
                 entity = Following(id=user['id'], username=user['username'])
                 self.persistence.save_follower(entity)
@@ -118,8 +122,8 @@ class UnfollowBot:
 
                 logger.info('successfuly un followed user {}'.format(user.username))
 
-            except ClientBadRequestError:
-                logger.info("user {} does not exist anymore".format(user.username))
+            except ClientBadRequestError as e:
+                logger.info("user {} does not exist anymore".format(user.username), e)
                 user.unfollowed = True
                 self.persistence.save_following(user)
 
