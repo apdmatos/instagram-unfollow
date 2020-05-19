@@ -34,11 +34,8 @@ class UnfollowBot:
 
     def _login(self):
         logger.info('authenticating {}... it may take a while'.format(self._username))
-        self.api = MyClient(
-            auto_patch=True, authenticate=True,
-            username=self._username, password=self._password)
 
-        self.mobileApi = MobileClient(
+        self.api = MobileClient(
             auto_patch=True, authenticate=True,
             username=self._username, password=self._password)
 
@@ -52,9 +49,9 @@ class UnfollowBot:
         logger.info('downloading followers')
 
         count = 0
-        rank_token = self.mobileApi.generate_uuid()
-        followers = pagination.page(self.mobileApi.user_followers,
-                                    args={'user_id': self.mobileApi.authenticated_user_id, 'rank_token': rank_token}, wait=10)
+        rank_token = self.api.generate_uuid()
+        followers = pagination.page(self.api.user_followers,
+                                    args={'user_id': self.api.authenticated_user_id, 'rank_token': rank_token}, wait=10)
         it = iter(followers)
 
         while True:
@@ -84,9 +81,9 @@ class UnfollowBot:
 
         logger.info('downloading users I am following')
 
-        rank_token = self.mobileApi.generate_uuid()
-        following = pagination.page(self.mobileApi.user_following,
-                                    args={'user_id': self.mobileApi.authenticated_user_id, 'rank_token': rank_token}, wait=10)
+        rank_token = self.api.generate_uuid()
+        following = pagination.page(self.api.user_following,
+                                    args={'user_id': self.api.authenticated_user_id, 'rank_token': rank_token}, wait=10)
 
         count = 0
         it = iter(following)
